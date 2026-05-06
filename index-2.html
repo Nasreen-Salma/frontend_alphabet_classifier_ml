@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AlphaDetect — Handwriting Recognition</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inconsolata:wght@400;600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink: #1a1a2e;
+  --paper: #f5f0e8;
+  --cream: #ede8dc;
+  --accent: #e63946;
+  --gold: #f4a261;
+  --muted: #7a7a9a;
+  --shadow: 6px 6px 0px #1a1a2e;
+  --shadow-sm: 3px 3px 0px #1a1a2e;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Syne', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(26,26,46,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26,26,46,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+header {
+  position: relative;
+  z-index: 10;
+  border-bottom: 2px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 1.2rem 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; }
+.logo span { color: var(--accent); }
+
+.badge {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  background: var(--accent);
+  color: white;
+  padding: 0.3rem 0.8rem;
+  text-transform: uppercase;
+}
+
+main {
+  position: relative;
+  z-index: 10;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 700px) {
+  main { grid-template-columns: 1fr; }
+  header { padding: 1rem 1.2rem; }
+}
+
+.section-title {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--muted);
+  opacity: 0.3;
+}
+
+.tabs {
+  display: flex;
+  margin-bottom: 1rem;
+  border: 2px solid var(--ink);
+  overflow: hidden;
+  width: fit-content;
+}
+
+.tab {
+  padding: 0.5rem 1.2rem;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: none;
+  background: var(--paper);
+  color: var(--muted);
+  transition: all 0.15s;
+  border-right: 1px solid var(--ink);
+}
+
+.tab:last-child { border-right: none; }
+.tab.active { background: var(--ink); color: var(--paper); }
+
+.input-card {
+  background: #fff;
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.card-header {
+  background: var(--cream);
+  border-bottom: 2px solid var(--ink);
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-title {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.btn-icon {
+  background: none;
+  border: 1px solid var(--ink);
+  width: 28px; height: 28px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+  color: var(--ink);
+}
+.btn-icon:hover { background: var(--ink); color: var(--paper); }
+
+canvas#drawCanvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  cursor: crosshair;
+  background: #f9f6f0;
+  touch-action: none;
+}
+
+.upload-zone {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: #f9f6f0;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.upload-zone:hover { background: #f0ebe0; }
+.upload-zone.drag { background: #e8f4fd; }
+
+.upload-icon { font-size: 3rem; opacity: 0.2; line-height: 1; }
+
+.upload-text {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+#uploadInput { display: none; }
+
+#previewImg {
+  display: none;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  position: absolute;
+  inset: 0;
+  padding: 1rem;
+}
+
+.brush-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--cream);
+  border-bottom: 2px solid var(--ink);
+}
+
+.brush-lbl {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.6rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 2px;
+  background: var(--ink);
+  opacity: 0.2;
+  outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  background: var(--accent);
+  border: 2px solid var(--ink);
+  cursor: pointer;
+}
+
+.btn-detect {
+  width: 100%;
+  padding: 1rem;
+  background: var(--accent);
+  color: white;
+  border: 2px solid var(--ink);
+  font-family: 'Syne', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.btn-detect:hover:not(:disabled) {
+  transform: translate(-2px,-2px);
+  box-shadow: 8px 8px 0 var(--ink);
+}
+.btn-detect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.spin { display: inline-block; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.result-col { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.result-card {
+  background: #fff;
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow);
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.result-card::before {
+  content: 'OUTPUT';
+  position: absolute;
+  top: 0.6rem; right: 0.8rem;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  opacity: 0.4;
+}
+
+.idle-letter { font-size: 9rem; font-weight: 800; color: var(--cream); line-height: 1; user-select: none; }
+.idle-sub { font-family: 'Inconsolata', monospace; font-size: 0.65rem; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 0.5rem; }
+
+.load-dots { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1rem; }
+.load-dots span {
+  width: 10px; height: 10px;
+  background: var(--ink);
+  border-radius: 50%;
+  animation: bounce 0.6s alternate infinite;
+}
+.load-dots span:nth-child(2) { animation-delay: 0.15s; }
+.load-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce {
+  from { transform: translateY(0); opacity: 0.3; }
+  to { transform: translateY(-10px); opacity: 1; }
+}
+.load-text { font-family: 'Inconsolata', monospace; font-size: 0.7rem; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; }
+
+.result-tag { font-family: 'Inconsolata', monospace; font-size: 0.6rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.25rem; }
+
+.big-letter {
+  font-size: 10rem;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1;
+  animation: popIn 0.35s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes popIn {
+  from { transform: scale(0.6) rotate(-5deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.conf-wrap { margin-top: 1.25rem; width: 160px; }
+.conf-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.6rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+.conf-track { height: 4px; background: var(--cream); border: 1px solid var(--ink); overflow: hidden; }
+.conf-fill { height: 100%; background: var(--accent); transition: width 0.7s cubic-bezier(0.4,0,0.2,1); width: 0%; }
+
+.error-banner {
+  display: none;
+  background: #fff0f0;
+  border: 2px solid var(--accent);
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+
+.specs-card {
+  background: var(--ink);
+  color: var(--paper);
+  border: 2px solid var(--ink);
+  padding: 1.25rem;
+}
+.specs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
+.spec-k { font-family: 'Inconsolata', monospace; font-size: 0.55rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.15rem; }
+.spec-v { font-family: 'Inconsolata', monospace; font-size: 0.8rem; font-weight: 600; color: var(--gold); }
+
+.how-card { background: #fff; border: 2px solid var(--ink); padding: 1.25rem; }
+.how-steps { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.how-step { display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+.step-num {
+  background: var(--accent);
+  color: white;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.6rem;
+  font-weight: 700;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+footer {
+  position: relative;
+  z-index: 10;
+  border-top: 2px solid var(--ink);
+  background: var(--cream);
+  padding: 1rem 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Alpha<span>Detect</span></div>
+  <div class="badge">A–Z Recognition</div>
+</header>
+
+<main>
+  <!-- LEFT: Input -->
+  <div>
+    <div class="section-title">Input Mode</div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('draw',this)">✏ Draw</button>
+      <button class="tab" onclick="switchTab('upload',this)">⬆ Upload</button>
+    </div>
+
+    <div class="input-card">
+      <div class="card-header">
+        <span class="card-title" id="panelLabel">Draw a letter</span>
+        <button class="btn-icon" onclick="clearInput()" title="Clear">✕</button>
+      </div>
+
+      <!-- Draw -->
+      <div id="drawPanel">
+        <canvas id="drawCanvas" width="500" height="500"></canvas>
+        <div class="brush-row">
+          <span class="brush-lbl">Brush</span>
+          <input type="range" id="brushRange" min="8" max="40" value="18"
+                 oninput="brushSize=+this.value;document.getElementById('bv').textContent=this.value+'px'">
+          <span class="brush-lbl" id="bv">18px</span>
+        </div>
+      </div>
+
+      <!-- Upload -->
+      <div id="uploadPanel" style="display:none">
+        <div class="upload-zone" id="dropZone"
+             onclick="document.getElementById('uploadInput').click()"
+             ondragover="dragOver(event)" ondragleave="dragLeave()" ondrop="dropFile(event)">
+          <div class="upload-icon" id="upIcon">📄</div>
+          <div class="upload-text" id="upText">Click or drag &amp; drop<br>JPG / PNG</div>
+          <img id="previewImg" alt="preview"/>
+        </div>
+        <input type="file" id="uploadInput" accept="image/*" onchange="loadFile(this)"/>
+      </div>
+    </div>
+
+    <button class="btn-detect" id="detectBtn" onclick="detect()">
+      <span id="btnText">Detect Alphabet</span>
+      <span id="btnIcon">→</span>
+    </button>
+
+    <div class="error-banner" id="errBanner">⚠ &nbsp;<span id="errMsg"></span></div>
+  </div>
+
+  <!-- RIGHT: Result -->
+  <div class="result-col">
+
+    <div class="result-card">
+      <!-- Idle -->
+      <div id="idleState">
+        <div class="idle-letter">?</div>
+        <div class="idle-sub">Draw or upload to begin</div>
+      </div>
+      <!-- Loading -->
+      <div id="loadingState" style="display:none">
+        <div class="load-dots"><span></span><span></span><span></span></div>
+        <div class="load-text">Analysing...</div>
+      </div>
+      <!-- Result -->
+      <div id="resultState" style="display:none">
+        <div class="result-tag">Detected Letter</div>
+        <div class="big-letter" id="bigLetter">A</div>
+        <div class="conf-wrap">
+          <div class="conf-row">
+            <span>Confidence</span>
+            <span id="confPct">0%</span>
+          </div>
+          <div class="conf-track">
+            <div class="conf-fill" id="confFill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Specs -->
+    <div class="specs-card">
+      <div class="section-title" style="color:#7a7a9a;">Model Info</div>
+      <div class="specs-grid">
+        <div><div class="spec-k">Model</div><div class="spec-v">MLP</div></div>
+        <div><div class="spec-k">Input</div><div class="spec-v">28×28 px</div></div>
+        <div><div class="spec-k">Classes</div><div class="spec-v">26 (A–Z)</div></div>
+        <div><div class="spec-k">Dataset</div><div class="spec-v">EMNIST</div></div>
+      </div>
+    </div>
+
+    <!-- How to use -->
+    <div class="how-card">
+      <div class="section-title">How to use</div>
+      <div class="how-steps">
+        <div class="how-step">
+          <div class="step-num">1</div>
+          <span>Draw a single English letter on the canvas, or switch to Upload and choose a handwritten image.</span>
+        </div>
+        <div class="how-step">
+          <div class="step-num">2</div>
+          <span>Click <strong>Detect Alphabet</strong> to send it to the AI model.</span>
+        </div>
+        <div class="how-step">
+          <div class="step-num">3</div>
+          <span>The predicted letter and confidence score appear instantly.</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <span>AlphaDetect · MLP Classifier · EMNIST</span>
+  <span>© 2026 — All recognition is estimated</span>
+</footer>
+
+<script>
+const API_URL = 'https://backend-ml-alphabet-classifier.onrender.com/predict';
+
+let currentTab = 'draw';
+let brushSize = 18;
+let drawing = false;
+let hasDrawn = false;
+let uploadedDataUrl = null;
+
+// ── Canvas ──────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+ctx.fillStyle = '#f9f6f0';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const sx = canvas.width / r.width, sy = canvas.height / r.height;
+  const s = e.touches ? e.touches[0] : e;
+  return { x: (s.clientX - r.left) * sx, y: (s.clientY - r.top) * sy };
+}
+
+canvas.addEventListener('mousedown', e => {
+  drawing = true; hasDrawn = true;
+  const p = getPos(e);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, brushSize / 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a1a2e'; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(p.x, p.y);
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!drawing) return;
+  const p = getPos(e);
+  ctx.lineWidth = brushSize; ctx.strokeStyle = '#1a1a2e';
+  ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.lineTo(p.x, p.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(p.x, p.y);
+});
+
+canvas.addEventListener('mouseup', () => drawing = false);
+canvas.addEventListener('mouseleave', () => drawing = false);
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault(); drawing = true; hasDrawn = true;
+  const p = getPos(e);
+  ctx.beginPath(); ctx.moveTo(p.x, p.y);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!drawing) return;
+  const p = getPos(e);
+  ctx.lineWidth = brushSize; ctx.strokeStyle = '#1a1a2e';
+  ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.lineTo(p.x, p.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(p.x, p.y);
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => drawing = false);
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('drawPanel').style.display = tab === 'draw' ? 'block' : 'none';
+  document.getElementById('uploadPanel').style.display = tab === 'upload' ? 'block' : 'none';
+  document.getElementById('panelLabel').textContent = tab === 'draw' ? 'Draw a letter' : 'Upload an image';
+  showIdle();
+}
+
+// ── Upload ──────────────────────────────────────────────────────────────────
+function loadFile(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    uploadedDataUrl = e.target.result;
+    document.getElementById('previewImg').src = uploadedDataUrl;
+    document.getElementById('previewImg').style.display = 'block';
+    document.getElementById('upIcon').style.opacity = '0';
+    document.getElementById('upText').style.opacity = '0';
+  };
+  reader.readAsDataURL(file);
+}
+
+function dragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag'); }
+function dragLeave() { document.getElementById('dropZone').classList.remove('drag'); }
+function dropFile(e) {
+  e.preventDefault(); dragLeave();
+  const dt = e.dataTransfer;
+  if (dt.files[0]) { document.getElementById('uploadInput').files = dt.files; loadFile(document.getElementById('uploadInput')); }
+}
+
+// ── Clear ───────────────────────────────────────────────────────────────────
+function clearInput() {
+  if (currentTab === 'draw') {
+    ctx.fillStyle = '#f9f6f0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    hasDrawn = false;
+  } else {
+    uploadedDataUrl = null;
+    document.getElementById('previewImg').style.display = 'none';
+    document.getElementById('upIcon').style.opacity = '';
+    document.getElementById('upText').style.opacity = '';
+    document.getElementById('uploadInput').value = '';
+  }
+  showIdle();
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+function showIdle() {
+  document.getElementById('idleState').style.display = 'block';
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('resultState').style.display = 'none';
+  document.getElementById('errBanner').style.display = 'none';
+  document.getElementById('detectBtn').disabled = false;
+  document.getElementById('btnText').textContent = 'Detect Alphabet';
+  document.getElementById('btnIcon').innerHTML = '→';
+}
+
+function showLoading() {
+  document.getElementById('idleState').style.display = 'none';
+  document.getElementById('loadingState').style.display = 'block';
+  document.getElementById('resultState').style.display = 'none';
+  document.getElementById('errBanner').style.display = 'none';
+  document.getElementById('detectBtn').disabled = true;
+  document.getElementById('btnText').textContent = 'Detecting...';
+  document.getElementById('btnIcon').innerHTML = '<span class="spin">⟳</span>';
+}
+
+function showResult(letter, pct) {
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('bigLetter').textContent = letter;
+  document.getElementById('confPct').textContent = pct + '%';
+  document.getElementById('confFill').style.width = '0%';
+  document.getElementById('resultState').style.display = 'block';
+  document.getElementById('detectBtn').disabled = false;
+  document.getElementById('btnText').textContent = 'Detect Again';
+  document.getElementById('btnIcon').innerHTML = '→';
+  setTimeout(() => document.getElementById('confFill').style.width = pct + '%', 50);
+}
+
+function showError(msg) {
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('idleState').style.display = 'block';
+  document.getElementById('errMsg').textContent = msg;
+  document.getElementById('errBanner').style.display = 'block';
+  document.getElementById('detectBtn').disabled = false;
+  document.getElementById('btnText').textContent = 'Detect Alphabet';
+  document.getElementById('btnIcon').innerHTML = '→';
+}
+
+// ── Detect ───────────────────────────────────────────────────────────────────
+async function detect() {
+  let imageData;
+  if (currentTab === 'draw') {
+    if (!hasDrawn) { alert('Please draw a letter first.'); return; }
+    imageData = canvas.toDataURL('image/png');
+  } else {
+    if (!uploadedDataUrl) { alert('Please upload an image first.'); return; }
+    imageData = uploadedDataUrl;
+  }
+
+  showLoading();
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageData })
+    });
+    if (!res.ok) throw new Error('Server error: ' + res.status);
+    const data = await res.json();
+    const pct = Math.round((data.confidence || 0) * 100);
+    showResult(data.prediction || '?', pct);
+  } catch (err) {
+    showError(err.message || 'Could not reach the API. Is the backend awake?');
+  }
+}
+</script>
+</body>
+</html>
